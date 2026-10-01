@@ -1,0 +1,227 @@
+#!/bin/bash
+# EduBlitz HA - Installation Script
+# Installs nginx, stress, PHP and configures the web application
+# Works for Amazon Linux 2
+
+set -e
+
+echo "=== EduBlitz HA - Starting Installation ==="
+
+# Get script directory (for manual runs) or use /tmp for User Data
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+WEB_ROOT="/var/www/html"
+
+# Update system and install packages
+echo "Installing nginx, PHP, and stress..."
+sudo yum update -y
+# Enable EPEL for stress package (Amazon Linux 2)
+sudo yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm 2>/dev/null || true
+sudo yum install -y nginx php php-fpm stress
+sudo yum install -y stress-ng 2>/dev/null || true
+
+# Create web directory
+sudo mkdir -p "$WEB_ROOT"
+sudo chown -R nginx:nginx "$WEB_ROOT" 2>/dev/null || sudo chown -R apache:apache "$WEB_ROOT" 2>/dev/null || true
+
+# Copy or create application files
+if [ -f "$SCRIPT_DIR/index.html" ]; then
+    echo "Copying app files from $SCRIPT_DIR..."
+    sudo cp "$SCRIPT_DIR/index.html" "$WEB_ROOT/"
+    sudo cp "$SCRIPT_DIR/load.sh" "$WEB_ROOT/"
+    sudo cp "$SCRIPT_DIR/metadata.php" "$WEB_ROOT/"
+    sudo cp "$SCRIPT_DIR/load.php" "$WEB_ROOT/"
+    sudo cp "$SCRIPT_DIR/load-internal.php" "$WEB_ROOT/"
+    sudo cp "$SCRIPT_DIR/instances.php" "$WEB_ROOT/"
+else
+    echo "Creating app files from embedded content..."
+    # Create index.html (embedded fallback for User Data deployments)
+    sudo tee "$WEB_ROOT/index.html" > /dev/null << 'INDEXHTML'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>EduBlitz HA</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Plus Jakarta Sans',sans-serif;min-height:100vh;background:#0f0f14;color:#f4f4f5;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+.bg{position:fixed;inset:0;z-index:0;background:radial-gradient(ellipse 80% 50% at 50% -20%,rgba(34,211,238,0.15),transparent)}
+.container{position:relative;z-index:1;max-width:520px;margin:0 auto;padding:48px 24px 80px}
+.header{text-align:center;margin-bottom:40px}
+.logo{display:inline-flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13px;font-weight:600;color:#22d3ee;letter-spacing:.1em;text-transform:uppercase}
+h1{font-size:32px;font-weight:800;letter-spacing:-.02em;margin-bottom:8px;background:linear-gradient(135deg,#fff,#a1a1aa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.subtitle{font-size:16px;color:#a1a1aa;font-weight:500}
+.card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:32px;margin-bottom:24px;backdrop-filter:blur(20px)}
+.card-title{font-size:12px;font-weight:600;color:#71717a;text-transform:uppercase;letter-spacing:.08em;margin-bottom:24px}
+.metadata{display:grid;gap:16px}
+.meta-item{display:flex;align-items:center;gap:16px;padding:16px 20px;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.08);border-radius:12px}
+.meta-icon{width:44px;height:44px;border-radius:12px;background:rgba(34,211,238,.15);display:flex;align-items:center;justify-content:center;font-size:20px}
+.meta-content{flex:1;min-width:0}
+.meta-label{font-size:12px;color:#71717a;font-weight:500;margin-bottom:2px}
+.meta-value{font-size:15px;font-weight:600;color:#f4f4f5;font-family:monospace}
+.meta-value.loading{color:#71717a;font-style:italic}
+.cta-wrapper{margin-top:32px}
+.btn{width:100%;padding:18px 28px;font-size:16px;font-weight:700;font-family:inherit;color:#0f0f14;background:linear-gradient(135deg,#22d3ee,#06b6d4);border:none;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:all .25s;box-shadow:0 4px 24px rgba(34,211,238,.25)}
+.btn:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(34,211,238,.35)}
+.btn:active{transform:translateY(0)}
+.btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+.hint{font-size:13px;color:#71717a;margin-top:16px;line-height:1.5;text-align:center}
+.status{margin-top:24px;padding:16px 20px;border-radius:12px;font-size:14px;font-weight:500;display:none;align-items:flex-start;gap:12px}
+.status.success{display:flex;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.25);color:#34d399}
+.status.error{display:flex;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.25);color:#f87171}
+.footer{text-align:center;margin-top:48px;font-size:12px;color:#71717a}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="container">
+<header class="header">
+<div class="logo">EduBlitz HA</div>
+<h1>Highly Available Web Application</h1>
+<p class="subtitle">AWS EC2 • Load Balancer • Auto Scaling</p>
+</header>
+<div class="card">
+<h2 class="card-title">Current Instance</h2>
+<div class="metadata">
+<div class="meta-item"><div class="meta-icon">&#128424;</div><div class="meta-content"><div class="meta-label">Instance ID</div><div id="instanceId" class="meta-value loading">Loading...</div></div></div>
+<div class="meta-item"><div class="meta-icon">&#128205;</div><div class="meta-content"><div class="meta-label">Availability Zone</div><div id="availabilityZone" class="meta-value loading">Loading...</div></div></div>
+</div>
+<h2 class="card-title">All Running Instances</h2>
+<div id="instancesList" class="metadata" style="min-height:60px">Loading instances...</div>
+<div class="cta-wrapper">
+<button class="btn" onclick="increaseLoad()" id="loadBtn">&#128200; Increase Load (All Instances → 80% CPU)</button>
+<p class="hint">Increases CPU to ~80% on ALL instances for 5 min — triggers Auto Scaling in 2–3 min</p>
+</div>
+<div id="status" class="status"></div>
+</div>
+<footer class="footer"><p>Click the button to simulate load and watch Auto Scaling launch new instances</p></footer>
+</div>
+<script>
+async function loadMetadata(){try{const r=await fetch('/metadata');const d=await r.json();document.getElementById('instanceId').textContent=d['instance-id']||'N/A';document.getElementById('availabilityZone').textContent=d['availability-zone']||'N/A';document.getElementById('instanceId').classList.remove('loading');document.getElementById('availabilityZone').classList.remove('loading')}catch(e){document.getElementById('instanceId').textContent='Error';document.getElementById('availabilityZone').textContent='Error'}}
+async function loadInstances(){const el=document.getElementById('instancesList');try{const r=await fetch('/instances');const d=await r.json();const i=d.instances||[];el.innerHTML=i.length?i.map(x=>'<div class="meta-item"'+(x.current?' style="border-color:rgba(34,211,238,.4)"':'')+'><span>'+x['instance-id']+'</span> <small>'+x['availability-zone']+'</small>'+(x.current?' (you)':'')+'</div>').join(''):'No instances (add IAM role)';}catch(e){el.innerHTML='Could not load instances'}el.style.minHeight=''}
+async function increaseLoad(){const s=document.getElementById('status');const b=document.getElementById('loadBtn');s.className='status success';s.innerHTML='<span>&#9203;</span><span>Increasing CPU to ~80% on ALL instances...</span>';b.disabled=true;try{const r=await fetch('/load');const d=await r.json();s.innerHTML='<span>&#10003;</span><span>CPU load started on '+(d.triggered||1)+' instance(s). Check Auto Scaling.</span>'}catch(e){s.className='status error';s.innerHTML='<span>&#10005;</span><span>Could not start load. Try again.</span>'}finally{b.disabled=false;loadInstances()}}
+loadMetadata();loadInstances();
+</script>
+</body>
+</html>
+INDEXHTML
+
+    # Create load.sh
+    sudo tee "$WEB_ROOT/load.sh" > /dev/null << 'LOADSH'
+#!/bin/bash
+if command -v stress-ng &>/dev/null; then stress-ng --cpu 1 --cpu-load 80 --timeout 300 & else stress --cpu 1 --timeout 300 & fi
+LOADSH
+
+    # Create metadata.php
+    sudo tee "$WEB_ROOT/metadata.php" > /dev/null << 'METAPH'
+<?php
+header('Content-Type: application/json');
+$id = @file_get_contents('http://169.254.169.254/latest/meta-data/instance-id');
+$az = @file_get_contents('http://169.254.169.254/latest/meta-data/placement/availability-zone');
+echo json_encode(['instance-id' => $id ?: 'unknown', 'availability-zone' => $az ?: 'unknown']);
+METAPH
+
+    # Create load.php (orchestrator)
+    sudo tee "$WEB_ROOT/load.php" > /dev/null << 'LOADPH'
+<?php
+header('Content-Type: application/json');
+$ctx = stream_context_create(['http' => ['timeout' => 10]]);
+$instancesData = @file_get_contents('http://127.0.0.1/instances', false, $ctx);
+$data = $instancesData ? @json_decode($instancesData, true) : null;
+$instances = $data['instances'] ?? [];
+$triggered = 0;
+foreach ($instances as $inst) {
+    $ip = $inst['private-ip'] ?? ''; $state = $inst['state'] ?? '';
+    if (!empty($ip) && $state === 'running' && @file_get_contents("http://{$ip}/load-internal", false, stream_context_create(['http'=>['timeout'=>3]])) !== false) $triggered++;
+}
+if ($triggered === 0) { $p = '/var/www/html/load.sh'; if (file_exists($p)) { exec('bash ' . escapeshellarg($p) . ' > /dev/null 2>&1 &'); $triggered = 1; } }
+echo json_encode(['status' => 'ok', 'triggered' => $triggered, 'total' => count($instances), 'message' => "CPU load started on {$triggered} instance(s)"]);
+LOADPH
+
+    # Create load-internal.php
+    sudo tee "$WEB_ROOT/load-internal.php" > /dev/null << 'LOADINTPH'
+<?php header('Content-Type: application/json'); $p='/var/www/html/load.sh'; if(file_exists($p)){exec('bash '.escapeshellarg($p).' > /dev/null 2>&1 &');echo json_encode(['status'=>'ok']);}else{http_response_code(500);echo json_encode(['status'=>'error']);}
+LOADINTPH
+
+    # Create instances.php
+    sudo tee "$WEB_ROOT/instances.php" > /dev/null << 'INSTPH'
+<?php
+header('Content-Type: application/json');
+$id = trim(@file_get_contents('http://169.254.169.254/latest/meta-data/instance-id') ?: '');
+$az = trim(@file_get_contents('http://169.254.169.254/latest/meta-data/placement/availability-zone') ?: '');
+if(empty($id)){echo json_encode(['instances'=>[]]);exit;}
+$instances=[];$region=preg_replace('/[a-z]$/','',$az);
+$asg=@shell_exec("aws autoscaling describe-auto-scaling-instances --instance-ids ".escapeshellarg($id)." --region ".escapeshellarg($region)." --output json 2>/dev/null");
+$asgData=$asg?@json_decode($asg,true):null;
+if(!empty($asgData['AutoScalingInstances'][0]['AutoScalingGroupName'])){
+$asgName=$asgData['AutoScalingInstances'][0]['AutoScalingGroupName'];
+$all=@shell_exec("aws autoscaling describe-auto-scaling-instances --region ".escapeshellarg($region)." --output json 2>/dev/null");
+$allData=$all?@json_decode($all,true):null;$ids=[];
+foreach($allData['AutoScalingInstances']??[] as $a){if(($a['AutoScalingGroupName']??'')===$asgName&&($a['LifecycleState']??'')==='InService')$ids[]=$a['InstanceId'];}
+if(!empty($ids)){$s=implode(' ',array_map('escapeshellarg',$ids));$ec2=@shell_exec("aws ec2 describe-instances --instance-ids {$s} --region ".escapeshellarg($region)." --query 'Reservations[*].Instances[*].[InstanceId,PrivateIpAddress,Placement.AvailabilityZone,State.Name]' --output json 2>/dev/null");$ec2Data=$ec2?@json_decode($ec2,true):null;
+foreach($ec2Data??[] as $r)foreach($r as $i)$instances[]=['instance-id'=>$i[0]??'','private-ip'=>$i[1]??'','availability-zone'=>$i[2]??'','state'=>$i[3]??'','current'=>($i[0]??'')===$id];}}
+if(empty($instances))$instances[]=['instance-id'=>$id,'private-ip'=>trim(@file_get_contents('http://169.254.169.254/latest/meta-data/local-ipv4')?:''),'availability-zone'=>$az,'state'=>'running','current'=>true];
+echo json_encode(['instances'=>$instances,'current-instance-id'=>$id]);
+INSTPH
+fi
+
+# Make load.sh executable
+sudo chmod +x "$WEB_ROOT/load.sh"
+
+# Configure PHP-FPM to listen on TCP (more reliable across Amazon Linux versions)
+PHP_FPM_CONF="/etc/php-fpm.d/www.conf"
+if [ -f "$PHP_FPM_CONF" ]; then
+    sudo sed -i 's/^listen = .*/listen = 127.0.0.1:9000/' "$PHP_FPM_CONF"
+    sudo sed -i 's/^listen.allowed_clients = .*/listen.allowed_clients = 127.0.0.1/' "$PHP_FPM_CONF" 2>/dev/null || true
+fi
+
+# Configure nginx
+echo "Configuring nginx..."
+sudo tee /etc/nginx/conf.d/edublitz.conf > /dev/null << 'NGINXCONF'
+server {
+    listen 80;
+    server_name _;
+    root /var/www/html;
+    index index.html index.php;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location = /load {
+        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_param SCRIPT_FILENAME /var/www/html/load.php;
+        include fastcgi_params;
+    }
+
+    location = /metadata {
+        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_param SCRIPT_FILENAME /var/www/html/metadata.php;
+        include fastcgi_params;
+    }
+
+    location = /instances {
+        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_param SCRIPT_FILENAME /var/www/html/instances.php;
+        include fastcgi_params;
+    }
+
+    location = /load-internal {
+        fastcgi_pass 127.0.0.1:9000;
+        fastcgi_param SCRIPT_FILENAME /var/www/html/load-internal.php;
+        include fastcgi_params;
+    }
+}
+NGINXCONF
+
+# Remove default nginx config if it conflicts
+sudo rm -f /etc/nginx/conf.d/default.conf 2>/dev/null || true
+
+# Start and enable services
+echo "Starting services..."
+sudo systemctl enable nginx php-fpm
+sudo systemctl start php-fpm
+sudo systemctl start nginx
+
+echo "=== EduBlitz HA - Installation Complete ==="
+echo "Visit http://<instance-ip>/ to access the application"

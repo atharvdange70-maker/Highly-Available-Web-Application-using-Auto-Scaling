@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduBlitz HA — Highly Available Web Application</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0f0f14;
+            --bg-card: rgba(255, 255, 255, 0.03);
+            --bg-card-hover: rgba(255, 255, 255, 0.06);
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #f4f4f5;
+            --text-secondary: #a1a1aa;
+            --text-muted: #71717a;
+            --accent: #22d3ee;
+            --accent-dim: rgba(34, 211, 238, 0.15);
+            --accent-glow: rgba(34, 211, 238, 0.4);
+            --success: #34d399;
+            --success-bg: rgba(52, 211, 153, 0.12);
+            --error: #f87171;
+            --error-bg: rgba(248, 113, 113, 0.12);
+            --radius: 16px;
+            --radius-sm: 12px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            min-height: 100vh;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Animated mesh background */
+        .bg {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background: 
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(34, 211, 238, 0.15), transparent),
+                radial-gradient(ellipse 60% 40% at 100% 50%, rgba(139, 92, 246, 0.08), transparent),
+                radial-gradient(ellipse 60% 40% at 0% 50%, rgba(34, 211, 238, 0.06), transparent);
+        }
+
+        .grid {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background-image: 
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+            background-size: 64px 64px;
+            mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 20%, transparent 70%);
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 520px;
+            margin: 0 auto;
+            padding: 48px 24px 80px;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--accent);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+        }
+
+        .logo::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 50%;
+            box-shadow: 0 0 12px var(--accent-glow);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+        }
+
+        h1 {
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #fff 0%, var(--text-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            font-size: 16px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        /* Card */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 32px;
+            margin-bottom: 24px;
+            backdrop-filter: blur(20px);
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .card:hover {
+            background: var(--bg-card-hover);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .card-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 24px;
+        }
+
+        /* Metadata grid */
+        .metadata {
+            display: grid;
+            gap: 16px;
+        }
+
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 16px 20px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            transition: all 0.2s;
+        }
+
+        .meta-item:hover {
+            border-color: rgba(34, 211, 238, 0.2);
+            background: rgba(34, 211, 238, 0.04);
+        }
+
+        .meta-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: var(--accent-dim);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 20px;
+        }
+
+        .meta-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .meta-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .meta-value {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+        }
+
+        .meta-value.loading {
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        /* Button */
+        .cta-wrapper {
+            margin-top: 32px;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 18px 28px;
+            font-size: 16px;
+            font-weight: 700;
+            font-family: inherit;
+            color: var(--bg-dark);
+            background: linear-gradient(135deg, var(--accent) 0%, #06b6d4 100%);
+            border: none;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 24px rgba(34, 211, 238, 0.25);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, transparent 50%);
+            opacity: 0;
+            transition: opacity 0.25s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(34, 211, 238, 0.35);
+        }
+
+        .btn:hover::before {
+            opacity: 1;
+        }
+
+        .btn:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 16px rgba(34, 211, 238, 0.3);
+        }
+
+        .btn svg {
+            flex-shrink: 0;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .hint {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 16px;
+            line-height: 1.5;
+            text-align: center;
+        }
+
+        /* Status message */
+        .status {
+            margin-top: 24px;
+            padding: 16px 20px;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 1.5;
+            display: none;
+            align-items: flex-start;
+            gap: 12px;
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .status.success {
+            display: flex;
+            background: var(--success-bg);
+            border: 1px solid rgba(52, 211, 153, 0.25);
+            color: var(--success);
+        }
+
+        .status.error {
+            display: flex;
+            background: var(--error-bg);
+            border: 1px solid rgba(248, 113, 113, 0.25);
+            color: var(--error);
+        }
+
+        .status-icon {
+            flex-shrink: 0;
+            font-size: 18px;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            margin-top: 48px;
+        }
+
+        .footer p {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Instances list */
+        .instances-section {
+            margin-top: 32px;
+        }
+
+        .instances-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .instance-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 14px 18px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            transition: all 0.2s;
+        }
+
+        .instance-row.current {
+            border-color: rgba(34, 211, 238, 0.4);
+            background: rgba(34, 211, 238, 0.06);
+            box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.2);
+        }
+
+        .instance-row:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .instance-status {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            background: var(--success);
+            box-shadow: 0 0 8px rgba(52, 211, 153, 0.5);
+        }
+
+        .instance-status.pending {
+            background: var(--text-muted);
+        }
+
+        .instance-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .instance-id {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+        }
+
+        .instance-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .instance-badge {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: var(--accent-dim);
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .instances-loading, .instances-error {
+            padding: 20px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .instances-error {
+            color: var(--error);
+        }
+    </style>
+</head>
+<body>
+    <div class="bg"></div>
+    <div class="grid"></div>
+
+    <div class="container">
+        <header class="header">
+            <div class="logo">EduBlitz HA</div>
+            <h1>Highly Available Web Application</h1>
+            <p class="subtitle">AWS EC2 • Load Balancer • Auto Scaling</p>
+        </header>
+
+        <div class="card">
+            <h2 class="card-title">Current Instance</h2>
+            <div class="metadata">
+                <div class="meta-item">
+                    <div class="meta-icon">🖥</div>
+                    <div class="meta-content">
+                        <div class="meta-label">Instance ID</div>
+                        <div id="instanceId" class="meta-value loading">Loading...</div>
+                    </div>
+                </div>
+                <div class="meta-item">
+                    <div class="meta-icon">📍</div>
+                    <div class="meta-content">
+                        <div class="meta-label">Availability Zone</div>
+                        <div id="availabilityZone" class="meta-value loading">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="instances-section">
+                <h2 class="card-title">All Running Instances</h2>
+                <div id="instancesList" class="instances-grid">
+                    <div class="instances-loading">Loading instances...</div>
+                </div>
+            </div>
+
+            <div class="cta-wrapper">
+                <button class="btn" onclick="increaseLoad()" id="loadBtn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 20V10M12 20V4M6 20v-6"/>
+                    </svg>
+                    Increase Load (All Instances → 80% CPU)
+                </button>
+                <p class="hint">Increases CPU to ~80% on ALL instances for 5 min — triggers Auto Scaling in 2–3 min</p>
+            </div>
+
+            <div id="status" class="status"></div>
+        </div>
+
+        <footer class="footer">
+            <p>Click the button above to simulate load and watch Auto Scaling launch new instances</p>
+        </footer>
+    </div>
+
+    <script>
+        async function loadMetadata() {
+            const instanceEl = document.getElementById('instanceId');
+            const zoneEl = document.getElementById('availabilityZone');
+
+            try {
+                const response = await fetch('/metadata');
+                const data = await response.json();
+                instanceEl.textContent = data['instance-id'] || 'N/A';
+                zoneEl.textContent = data['availability-zone'] || 'N/A';
+                instanceEl.classList.remove('loading');
+                zoneEl.classList.remove('loading');
+            } catch (error) {
+                instanceEl.textContent = 'Error loading';
+                zoneEl.textContent = 'Error loading';
+                instanceEl.classList.remove('loading');
+                zoneEl.classList.remove('loading');
+            }
+        }
+
+        async function loadInstances() {
+            const listEl = document.getElementById('instancesList');
+            try {
+                const response = await fetch('/instances');
+                const data = await response.json();
+                const instances = data.instances || [];
+
+                if (instances.length === 0) {
+                    listEl.innerHTML = '<div class="instances-loading">No instances found (add IAM role for ASG listing)</div>';
+                    return;
+                }
+
+                listEl.innerHTML = instances.map(inst => `
+                    <div class="instance-row ${inst.current ? 'current' : ''}">
+                        <div class="instance-status ${inst.state === 'running' ? '' : 'pending'}"></div>
+                        <div class="instance-info">
+                            <div class="instance-id">${escapeHtml(inst['instance-id'])}</div>
+                            <div class="instance-meta">${escapeHtml(inst['availability-zone'])} • ${escapeHtml(inst['private-ip'] || '—')}</div>
+                        </div>
+                        ${inst.current ? '<span class="instance-badge">You are here</span>' : ''}
+                    </div>
+                `).join('');
+            } catch (error) {
+                listEl.innerHTML = '<div class="instances-error">Could not load instances</div>';
+            }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        async function increaseLoad() {
+            const statusEl = document.getElementById('status');
+            const btn = document.getElementById('loadBtn');
+
+            statusEl.className = 'status success';
+            statusEl.innerHTML = '<span class="status-icon">⏳</span><span>Increasing CPU to ~80% on ALL instances... Wait 2–3 min for Auto Scaling.</span>';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/load');
+                const data = await response.json();
+                const triggered = data.triggered ?? 1;
+                const total = data.total ?? triggered;
+                statusEl.innerHTML = `<span class="status-icon">✓</span><span>CPU load (~80%) started on ${triggered}/${total} instance(s)! Runs 5 min. Check Auto Scaling in AWS Console.</span>`;
+                statusEl.className = 'status success';
+                loadInstances();
+            } catch (error) {
+                statusEl.innerHTML = '<span class="status-icon">✕</span><span>Could not start load. Please try again.</span>';
+                statusEl.className = 'status error';
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        loadMetadata();
+        loadInstances();
+    </script>
+</body>
+</html>
